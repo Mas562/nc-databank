@@ -1,0 +1,9 @@
+{
+  "name": "nc-databank",
+  "version": "1.0.0",
+  "description": "Фанатская энциклопедия по вселенной Cyberpunk 2077 в стиле википедии",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "private": true
+}
