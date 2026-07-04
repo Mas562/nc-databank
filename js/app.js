@@ -994,65 +994,63 @@
 
     overlay.innerHTML = `
       <div class="graph-header">
-        <span class="graph-title">NC//DATABANK :: ГРАФ ЗНАНИЙ</span>
-        <span class="graph-close">[ESC] закрыть · колесо зум · тащи панораму</span>
+        <span class="graph-title"><span class="graph-title-dim">NC//DATABANK ::</span> ГРАФ ЗНАНИЙ<span class="graph-title-caret">▮</span></span>
+        <span class="graph-close">[ESC] закрыть · колесо / пинч — зум · тащи — панорама</span>
       </div>
       <div class="graph-body" id="graph-body">
+        <div class="graph-grid" aria-hidden="true"></div>
         <svg class="graph-svg" id="graph-svg"></svg>
+        <div class="graph-scanline" aria-hidden="true"></div>
+        <div class="graph-frame" aria-hidden="true"></div>
+        <div class="graph-stats" id="graph-stats" aria-hidden="true"></div>
+        <div class="graph-hud" id="graph-hud" aria-hidden="true">
+          <div class="graph-hud-title">// СКАНЕР УЗЛОВ</div>
+          <div class="graph-hud-body" id="graph-hud-body"></div>
+        </div>
       </div>
       <div class="graph-footer" id="graph-footer"></div>`;
 
     document.body.appendChild(overlay);
     requestAnimationFrame(() => overlay.classList.add("is-active"));
 
-    const body = document.getElementById("graph-body");
+    const bodyEl = document.getElementById("graph-body");
     const svg = document.getElementById("graph-svg");
 
-    const w = body.clientWidth || 800;
-    const h = body.clientHeight || 600;
-    svg.setAttribute("viewBox", "0 0 " + w + " " + h);
-    svg.setAttribute("width", w);
-    svg.setAttribute("height", h);
+    var w = bodyEl.clientWidth || 800;
+    var h = bodyEl.clientHeight || 600;
+    var cx = w / 2, cy = h / 2;
+
+    function sizeSvg() {
+      svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+      svg.setAttribute("width", w);
+      svg.setAttribute("height", h);
+    }
+    sizeSvg();
 
     const NS = "http://www.w3.org/2000/svg";
 
     const defs = document.createElementNS(NS, "defs");
     defs.innerHTML = [
-      '<filter id="graph-glow" x="-50%" y="-50%" width="200%" height="200%">',
-      '<feGaussianBlur stdDeviation="3" result="blur"/>',
-      "<feMerge><feMergeNode in=\"blur\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
-      "</filter>",
-      '<filter id="graph-glow-strong" x="-50%" y="-50%" width="200%" height="200%">',
-      '<feGaussianBlur stdDeviation="6" result="blur"/>',
+      '<filter id="graph-glow" x="-60%" y="-60%" width="220%" height="220%">',
+      '<feGaussianBlur stdDeviation="2.5" result="blur"/>',
       "<feMerge><feMergeNode in=\"blur\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>",
       "</filter>"
     ].join("");
     svg.appendChild(defs);
 
-    const bg = document.createElementNS(NS, "rect");
-    bg.setAttribute("width", w);
-    bg.setAttribute("height", h);
-    bg.setAttribute("fill", "transparent");
-    svg.appendChild(bg);
-
     const edgesG = document.createElementNS(NS, "g");
-    edgesG.id = "graph-edges";
-    svg.appendChild(edgesG);
-
     const nodesG = document.createElementNS(NS, "g");
-    nodesG.id = "graph-nodes";
-    svg.appendChild(nodesG);
-
     const labelsG = document.createElementNS(NS, "g");
-    labelsG.id = "graph-labels";
+    svg.appendChild(edgesG);
+    svg.appendChild(nodesG);
     svg.appendChild(labelsG);
 
-    // ---- build data ----
+    /* ---- данные ---- */
     const nodeMap = {};
     const nodes = DB.articles.map(function (a) {
       var n = {
         id: a.id, title: a.title, category: a.category, featured: a.featured,
-        x: 0, y: 0, vx: 0, vy: 0, connections: 0, radius: 10
+        x: 0, y: 0, vx: 0, vy: 0, connections: 0, radius: 8
       };
       nodeMap[n.id] = n;
       return n;
@@ -1068,13 +1066,27 @@
     });
 
     var maxC = Math.max.apply(null, nodes.map(function (n) { return n.connections; })) || 1;
-    nodes.forEach(function (n) { n.radius = 6 + (n.connections / maxC) * 18; });
+    var hubMin = Math.max(3, Math.ceil(maxC * 0.55));
+    nodes.forEach(function (n) { n.radius = 7 + (n.connections / maxC) * 15; });
 
-    nodes.forEach(function (n, i) {
-      var angle = (i / nodes.length) * Math.PI * 2 - Math.PI / 2;
-      var r = Math.min(w, h) * 0.3;
-      n.x = w / 2 + Math.cos(angle) * r + (Math.random() - 0.5) * 20;
-      n.y = h / 2 + Math.sin(angle) * r + (Math.random() - 0.5) * 20;
+    /* якоря категорий: каждый раздел тяготеет к своему сектору круга */
+    var anchors = {};
+    function computeAnchors() {
+      var present = CATEGORY_ORDER.filter(function (c) {
+        return nodes.some(function (n) { return n.category === c; });
+      });
+      present.forEach(function (c, i) {
+        var ang = (i / present.length) * Math.PI * 2 - Math.PI / 2;
+        var r = Math.min(w, h) * 0.32;
+        anchors[c] = { x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r };
+      });
+    }
+    computeAnchors();
+
+    nodes.forEach(function (n) {
+      var an = anchors[n.category] || { x: cx, y: cy };
+      n.x = an.x + (Math.random() - 0.5) * 90;
+      n.y = an.y + (Math.random() - 0.5) * 90;
     });
 
     var edgeSet = {};
@@ -1089,7 +1101,13 @@
       });
     });
 
-    // ---- create elements ----
+    var neighbors = {};
+    edges.forEach(function (e) {
+      (neighbors[e.source.id] = neighbors[e.source.id] || {})[e.target.id] = true;
+      (neighbors[e.target.id] = neighbors[e.target.id] || {})[e.source.id] = true;
+    });
+
+    /* ---- элементы ---- */
     var edgeEls = edges.map(function (e) {
       var line = document.createElementNS(NS, "line");
       line.setAttribute("class", "graph-edge");
@@ -1098,61 +1116,140 @@
     });
 
     var nodeEls = nodes.map(function (n) {
-      var g = document.createElementNS(NS, "g");
-      g.setAttribute("class", "graph-node");
-
-      var circle = document.createElementNS(NS, "circle");
-      circle.setAttribute("r", n.radius);
       var color = CATEGORY_COLORS[n.category] || "#7d7d8c";
-      circle.setAttribute("fill", color);
-      circle.setAttribute("stroke", "#fff");
-      circle.setAttribute("stroke-width", "1.5");
-      circle.style.filter = "url(#graph-glow)";
-      g.appendChild(circle);
+
+      var g = document.createElementNS(NS, "g");
+      g.setAttribute("class", "graph-node" + (n.connections >= hubMin ? " is-hub" : ""));
+
+      var ring = document.createElementNS(NS, "circle");
+      ring.setAttribute("class", "graph-node-ring");
+      ring.setAttribute("r", n.radius + 5);
+      ring.setAttribute("stroke", color);
+      g.appendChild(ring);
+
+      var core = document.createElementNS(NS, "circle");
+      core.setAttribute("class", "graph-node-core");
+      core.setAttribute("r", n.radius);
+      core.setAttribute("stroke", color);
+      core.style.filter = "url(#graph-glow)";
+      g.appendChild(core);
+
+      var dot = document.createElementNS(NS, "circle");
+      dot.setAttribute("class", "graph-node-dot");
+      dot.setAttribute("r", Math.max(2.2, n.radius * 0.38));
+      dot.setAttribute("fill", color);
+      g.appendChild(dot);
+
       nodesG.appendChild(g);
 
       var label = document.createElementNS(NS, "text");
       label.setAttribute("class", "graph-label");
       label.setAttribute("text-anchor", "middle");
-      label.setAttribute("dy", n.radius + 14);
-      label.setAttribute("fill", "rgba(233,233,238,0.6)");
-      label.setAttribute("font-size", "10");
-      label.setAttribute("font-family", "Manrope, sans-serif");
-      label.textContent = n.title;
+      label.setAttribute("dy", n.radius + 16);
+      label.textContent = n.title.toUpperCase();
       labelsG.appendChild(label);
 
-      return { el: g, circle: circle, label: label, node: n };
+      return { el: g, label: label, node: n };
     });
 
-    // ---- legend ----
+    /* ---- легенда-фильтр ---- */
     var footer = document.getElementById("graph-footer");
+    var activeCats = {};
+
     footer.innerHTML = CATEGORY_ORDER
-      .filter(function (c) { return DB.articles.some(function (a) { return a.category === c; }); })
+      .filter(function (c) { return nodes.some(function (n) { return n.category === c; }); })
       .map(function (c) {
         var cat = catById(c);
-        return "<span class=\"graph-legend-item\"><span class=\"graph-legend-dot\" style=\"background:" + CATEGORY_COLORS[c] + "\"></span>" + (cat ? esc(cat.name) : c) + "</span>";
+        var count = nodes.filter(function (n) { return n.category === c; }).length;
+        return '<button type="button" class="graph-legend-item" data-cat="' + c + '">' +
+          '<span class="graph-legend-dot" style="background:' + CATEGORY_COLORS[c] + ';box-shadow:0 0 6px ' + CATEGORY_COLORS[c] + '"></span>' +
+          (cat ? esc(cat.name) : c) +
+          '<span class="graph-legend-count">[' + count + ']</span></button>';
       })
       .join("");
 
-    // ---- force simulation ----
-    var running = true;
-    var cx = w / 2, cy = h / 2;
+    function applyFilter() {
+      var any = CATEGORY_ORDER.some(function (c) { return activeCats[c]; });
+      nodeEls.forEach(function (item) {
+        var off = any && !activeCats[item.node.category];
+        item.el.classList.toggle("is-off", off);
+        item.label.classList.toggle("is-off", off);
+      });
+      edgeEls.forEach(function (item) {
+        var off = any && !(activeCats[item.edge.source.category] && activeCats[item.edge.target.category]);
+        item.el.classList.toggle("is-off", off);
+      });
+    }
 
-    function tick() {
-      if (!running) return;
+    footer.addEventListener("click", function (e) {
+      var btn = e.target.closest(".graph-legend-item");
+      if (!btn) return;
+      var c = btn.dataset.cat;
+      activeCats[c] = !activeCats[c];
+      btn.classList.toggle("is-on", !!activeCats[c]);
+      applyFilter();
+    });
 
-      var rep = 40000;
-      var attr = 0.004;
-      var grav = 0.008;
-      var damp = 0.9;
-      var ideal = 110;
+    /* ---- статистика и HUD ---- */
+    var statsEl = document.getElementById("graph-stats");
+    var hudBody = document.getElementById("graph-hud-body");
+    var HUD_IDLE = '<div class="hud-row hud-idle">НАВЕДИТЕ НА УЗЕЛ<span class="hud-caret">_</span></div>';
+    hudBody.innerHTML = HUD_IDLE;
+
+    var tx = 0, ty = 0, sc = 1;
+
+    function updateStats() {
+      statsEl.textContent = "УЗЛОВ: " + nodes.length + " · СВЯЗЕЙ: " + edges.length + " · МАСШТАБ: " + Math.round(sc * 100) + "%";
+    }
+    updateStats();
+
+    function updateHud(item) {
+      if (!item) {
+        hudBody.innerHTML = HUD_IDLE;
+        return;
+      }
+      var n = item.node;
+      var cat = catById(n.category);
+      var color = CATEGORY_COLORS[n.category] || "#7d7d8c";
+      hudBody.innerHTML =
+        '<div class="hud-row hud-name">' + esc(n.title) + '</div>' +
+        '<div class="hud-row"><span class="hud-key">ID</span>ART::' + esc(n.id) + '</div>' +
+        '<div class="hud-row"><span class="hud-key">РАЗДЕЛ</span><span style="color:' + color + '">' + (cat ? esc(cat.name) : "Н/Д") + '</span></div>' +
+        '<div class="hud-row"><span class="hud-key">СВЯЗЕЙ</span>' + n.connections + '</div>' +
+        '<div class="hud-row hud-action">[КЛИК] ОТКРЫТЬ ЗАПИСЬ</div>';
+    }
+
+    var hovered = null;
+    function setHover(item) {
+      if (hovered === item) return;
+      hovered = item;
+      svg.classList.toggle("has-focus", !!item);
+      var nb = item ? (neighbors[item.node.id] || {}) : {};
+      nodeEls.forEach(function (it) {
+        var hot = !!item && (it === item || nb[it.node.id]);
+        it.el.classList.toggle("is-hot", hot);
+        it.el.classList.toggle("is-focus", it === item);
+        it.label.classList.toggle("is-hot", hot);
+      });
+      edgeEls.forEach(function (it) {
+        var hot = !!item && (it.edge.source.id === item.node.id || it.edge.target.id === item.node.id);
+        it.el.classList.toggle("is-hot", hot);
+      });
+      updateHud(item);
+    }
+
+    /* ---- физика ---- */
+    var alpha = 1;
+
+    function step(a) {
+      var rep = 42000, attr = 0.004, grav = 0.004, cluster = 0.01, damp = 0.88, ideal = 105;
 
       for (var i = 0; i < nodes.length; i++) {
         for (var j = i + 1; j < nodes.length; j++) {
           var dx = nodes[i].x - nodes[j].x;
           var dy = nodes[i].y - nodes[j].y;
           var dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-          var f = rep / (dist * dist);
+          var f = (rep / (dist * dist)) * a;
           var fx = (dx / dist) * f;
           var fy = (dy / dist) * f;
           nodes[i].vx += fx; nodes[i].vy += fy;
@@ -1164,7 +1261,7 @@
         var dx = e.target.x - e.source.x;
         var dy = e.target.y - e.source.y;
         var dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-        var f = (dist - ideal) * attr;
+        var f = (dist - ideal) * attr * a;
         var fx = (dx / dist) * f;
         var fy = (dy / dist) * f;
         e.source.vx += fx; e.source.vy += fy;
@@ -1172,21 +1269,25 @@
       });
 
       nodes.forEach(function (n) {
-        n.vx += (cx - n.x) * grav;
-        n.vy += (cy - n.y) * grav;
+        var an = anchors[n.category];
+        if (an) {
+          n.vx += (an.x - n.x) * cluster * a;
+          n.vy += (an.y - n.y) * cluster * a;
+        }
+        n.vx += (cx - n.x) * grav * a;
+        n.vy += (cy - n.y) * grav * a;
         n.vx *= damp;
         n.vy *= damp;
         n.x += n.vx;
         n.y += n.vy;
       });
-
-      render();
-      graphAnimId = requestAnimationFrame(tick);
     }
 
     function render() {
       nodeEls.forEach(function (item) {
         item.el.setAttribute("transform", "translate(" + item.node.x + "," + item.node.y + ")");
+        item.label.setAttribute("x", item.node.x);
+        item.label.setAttribute("y", item.node.y);
       });
       edgeEls.forEach(function (item) {
         item.el.setAttribute("x1", item.edge.source.x);
@@ -1194,24 +1295,30 @@
         item.el.setAttribute("x2", item.edge.target.x);
         item.el.setAttribute("y2", item.edge.target.y);
       });
-      nodeEls.forEach(function (item) {
-        item.label.setAttribute("x", item.node.x);
-        item.label.setAttribute("y", item.node.y);
-      });
     }
 
-    tick();
-    setTimeout(function () { running = false; }, 2500);
+    function tick() {
+      if (!graphOpen) { graphAnimId = null; return; }
+      if (alpha > 0.02) {
+        step(alpha);
+        alpha *= 0.985;
+        render();
+      }
+      graphAnimId = requestAnimationFrame(tick);
+    }
 
-    // ---- interaction ----
-    var dragNode = null;
-    var dragOffX = 0, dragOffY = 0;
-    var dragging = false;
+    function settle(iterations) {
+      for (var s = 0; s < iterations; s++) step(Math.max(0.05, 1 - s / iterations));
+      render();
+    }
 
-    var panning = false;
-    var panStartX = 0, panStartY = 0;
-    var tx = 0, ty = 0, sc = 1;
+    if (REDUCED_MOTION) {
+      settle(300);
+    } else {
+      tick();
+    }
 
+    /* ---- вид (пан/зум) ---- */
     function applyView() {
       var t = "translate(" + tx + "," + ty + ") scale(" + sc + ")";
       edgesG.setAttribute("transform", t);
@@ -1222,128 +1329,178 @@
     function nodeAt(px, py) {
       for (var i = nodeEls.length - 1; i >= 0; i--) {
         var item = nodeEls[i];
+        if (item.el.classList.contains("is-off")) continue;
         var nx = item.node.x * sc + tx;
         var ny = item.node.y * sc + ty;
-        var r = item.node.radius * sc;
+        var r = (item.node.radius + 5) * sc;
         if ((px - nx) * (px - nx) + (py - ny) * (py - ny) <= r * r) return item;
       }
       return null;
     }
 
-    function highlightEdges(nodeId, on) {
-      edgeEls.forEach(function (item) {
-        var connected = item.edge.source.id === nodeId || item.edge.target.id === nodeId;
-        item.el.classList.toggle("is-highlighted", on && connected);
-      });
+    /* ---- взаимодействие: drag / pan / pinch / клик ---- */
+    var pointers = {};
+    var dragNode = null, dragOffX = 0, dragOffY = 0, dragging = false;
+    var panning = false, panStartX = 0, panStartY = 0;
+    var pinch = null;
+    var downX = 0, downY = 0, moved = false;
+
+    function localXY(e) {
+      var r = svg.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
     }
 
     svg.addEventListener("pointerdown", function (e) {
-      var rect = svg.getBoundingClientRect();
-      var px = e.clientX - rect.left;
-      var py = e.clientY - rect.top;
+      svg.setPointerCapture(e.pointerId);
+      var p = localXY(e);
+      pointers[e.pointerId] = p;
+      var ids = Object.keys(pointers);
 
-      var hit = nodeAt(px, py);
+      if (ids.length === 2) {
+        if (dragNode) dragNode.el.classList.remove("is-dragging");
+        dragging = false;
+        dragNode = null;
+        panning = false;
+        bodyEl.classList.remove("is-panning");
+        var a = pointers[ids[0]], b = pointers[ids[1]];
+        pinch = {
+          d: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+          sc: sc, tx: tx, ty: ty,
+          mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2
+        };
+        return;
+      }
+
+      moved = false;
+      downX = p.x;
+      downY = p.y;
+
+      var hit = nodeAt(p.x, p.y);
       if (hit) {
         dragNode = hit;
         dragging = true;
-        dragOffX = px - hit.node.x * sc - tx;
-        dragOffY = py - hit.node.y * sc - ty;
+        dragOffX = p.x - hit.node.x * sc - tx;
+        dragOffY = p.y - hit.node.y * sc - ty;
         hit.el.classList.add("is-dragging");
-        body.style.cursor = "grabbing";
         e.preventDefault();
         return;
       }
 
       panning = true;
-      panStartX = px;
-      panStartY = py;
-      body.style.cursor = "grabbing";
+      panStartX = p.x;
+      panStartY = p.y;
+      bodyEl.classList.add("is-panning");
     });
 
     svg.addEventListener("pointermove", function (e) {
-      var rect = svg.getBoundingClientRect();
-      var px = e.clientX - rect.left;
-      var py = e.clientY - rect.top;
+      var p = localXY(e);
+      if (pointers[e.pointerId]) pointers[e.pointerId] = p;
+
+      if (pinch) {
+        var ids = Object.keys(pointers);
+        if (ids.length >= 2) {
+          var a = pointers[ids[0]], b = pointers[ids[1]];
+          var d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+          var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          var newSc = Math.max(0.3, Math.min(3, pinch.sc * (d / pinch.d)));
+          tx = mx - (pinch.mx - pinch.tx) * (newSc / pinch.sc);
+          ty = my - (pinch.my - pinch.ty) * (newSc / pinch.sc);
+          sc = newSc;
+          applyView();
+          updateStats();
+        }
+        return;
+      }
+
+      if (Math.abs(p.x - downX) > 4 || Math.abs(p.y - downY) > 4) moved = true;
 
       if (dragging && dragNode) {
-        dragNode.node.x = (px - dragOffX - tx) / sc;
-        dragNode.node.y = (py - dragOffY - ty) / sc;
+        dragNode.node.x = (p.x - dragOffX - tx) / sc;
+        dragNode.node.y = (p.y - dragOffY - ty) / sc;
         dragNode.node.vx = 0;
         dragNode.node.vy = 0;
-        if (!running) {
-          running = true;
-          setTimeout(function () { running = false; }, 1500);
-        }
+        alpha = Math.max(alpha, 0.3);
         render();
         e.preventDefault();
         return;
       }
 
       if (panning) {
-        tx += px - panStartX;
-        ty += py - panStartY;
-        panStartX = px;
-        panStartY = py;
+        tx += p.x - panStartX;
+        ty += p.y - panStartY;
+        panStartX = p.x;
+        panStartY = p.y;
         applyView();
         e.preventDefault();
         return;
       }
 
-      var hit = nodeAt(px, py);
-      body.style.cursor = hit ? "pointer" : "";
-      nodeEls.forEach(function (item) { item.el.classList.remove("is-hovered"); });
-      edgeEls.forEach(function (item) { item.el.classList.remove("is-highlighted"); });
-      if (hit) {
-        hit.el.classList.add("is-hovered");
-        highlightEdges(hit.node.id, true);
-      }
+      var hit = nodeAt(p.x, p.y);
+      bodyEl.classList.toggle("is-over-node", !!hit);
+      setHover(hit);
     });
 
-    svg.addEventListener("pointerup", function () {
+    function endPointer(e) {
+      delete pointers[e.pointerId];
+      if (pinch && Object.keys(pointers).length < 2) pinch = null;
+
       if (dragging) {
-        if (dragNode) {
-          if (!running) {
-            running = true;
-            setTimeout(function () { running = false; }, 1500);
-          }
-          dragNode.el.classList.remove("is-dragging");
-        }
+        var wasNode = dragNode;
+        if (wasNode) wasNode.el.classList.remove("is-dragging");
         dragging = false;
         dragNode = null;
-        body.style.cursor = "";
+        if (wasNode && !moved && e.type === "pointerup") {
+          closeGraph();
+          location.hash = "#/article/" + wasNode.node.id;
+          return;
+        }
       }
       if (panning) {
         panning = false;
-        body.style.cursor = "";
+        bodyEl.classList.remove("is-panning");
       }
-    });
+    }
+    svg.addEventListener("pointerup", endPointer);
+    svg.addEventListener("pointercancel", endPointer);
 
-    nodeEls.forEach(function (item) {
-      item.el.addEventListener("click", function (e) {
-        e.stopPropagation();
-        closeGraph();
-        location.hash = "#/article/" + item.node.id;
-      });
+    svg.addEventListener("pointerleave", function () {
+      bodyEl.classList.remove("is-over-node");
+      setHover(null);
     });
 
     svg.addEventListener("wheel", function (e) {
       e.preventDefault();
-      var rect = svg.getBoundingClientRect();
-      var px = e.clientX - rect.left;
-      var py = e.clientY - rect.top;
+      var p = localXY(e);
       var delta = -e.deltaY * 0.001;
       var newSc = Math.max(0.3, Math.min(3, sc * (1 + delta)));
-      tx = px - (px - tx) * (newSc / sc);
-      ty = py - (py - ty) * (newSc / sc);
+      tx = p.x - (p.x - tx) * (newSc / sc);
+      ty = p.y - (p.y - ty) * (newSc / sc);
       sc = newSc;
       applyView();
+      updateStats();
     }, { passive: false });
+
+    /* ---- ресайз и клавиатура ---- */
+    function onResize() {
+      w = bodyEl.clientWidth || 800;
+      h = bodyEl.clientHeight || 600;
+      cx = w / 2;
+      cy = h / 2;
+      sizeSvg();
+      computeAnchors();
+      if (REDUCED_MOTION) settle(80);
+      else alpha = Math.max(alpha, 0.5);
+    }
+    window.addEventListener("resize", onResize);
 
     function onGraphKey(e) {
       if (e.key === "Escape") closeGraph();
     }
     document.addEventListener("keydown", onGraphKey);
     overlay._keyHandler = onGraphKey;
+    overlay._cleanup = function () {
+      window.removeEventListener("resize", onResize);
+    };
   }
 
   function closeGraph() {
@@ -1353,6 +1510,7 @@
     if (overlay) {
       overlay.classList.remove("is-active");
       if (overlay._keyHandler) document.removeEventListener("keydown", overlay._keyHandler);
+      if (overlay._cleanup) overlay._cleanup();
       setTimeout(function () { overlay.remove(); }, 250);
     }
     graphOpen = false;

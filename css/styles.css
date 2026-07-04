@@ -55,6 +55,17 @@ a, button {
   outline: none;
 }
 
+/* ---- курсор-указатель на кликабельных элементах ---- */
+a, button, [role="button"],
+input[type="submit"], input[type="button"], input[type="reset"],
+.sidebar-toggle, .random-btn, .graph-btn, .sound-btn,
+.graph-node, .graph-close, .search-result,
+.category-chip, .related-link, .card,
+.nav-categories a, .nav-articles a,
+.terminal-link, .terminal-close {
+  cursor: pointer;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -1252,11 +1263,14 @@ blockquote cite {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(8, 8, 13, 0.97);
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(91, 214, 221, 0.05), transparent 70%),
+    radial-gradient(ellipse 45% 35% at 85% 100%, rgba(240, 229, 30, 0.04), transparent 70%),
+    #08080d;
   display: flex;
   flex-direction: column;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.25s ease;
   pointer-events: none;
 }
 .graph-overlay.is-active {
@@ -1264,14 +1278,29 @@ blockquote cite {
   pointer-events: auto;
 }
 
+/* ---- шапка ---- */
 .graph-header {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 12px 20px;
-  background: var(--bg-raised);
+  background:
+    linear-gradient(to right, rgba(240, 229, 30, 0.06), transparent 45%),
+    var(--bg-raised);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+.graph-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(to right, var(--accent) 0, var(--accent) 140px, transparent 340px);
+  opacity: 0.7;
 }
 .graph-title {
   font-family: var(--font-display);
@@ -1281,62 +1310,253 @@ blockquote cite {
   color: var(--accent);
   text-transform: uppercase;
 }
+.graph-title-dim {
+  color: var(--muted);
+  font-weight: 600;
+}
+.graph-title-caret {
+  color: var(--accent);
+  margin-left: 4px;
+}
 .graph-close {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
+  text-align: right;
 }
 
+/* ---- полотно ---- */
 .graph-body {
   flex: 1;
   position: relative;
   overflow: hidden;
 }
+.graph-body.is-over-node {
+  cursor: pointer;
+}
+.graph-body.is-panning {
+  cursor: grabbing;
+}
+
+/* сетка-блюпринт под графом */
+.graph-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(91, 214, 221, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 214, 221, 0.055) 1px, transparent 1px),
+    linear-gradient(rgba(91, 214, 221, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 214, 221, 0.025) 1px, transparent 1px);
+  background-size: 132px 132px, 132px 132px, 22px 22px, 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 80% at 50% 50%, #000 25%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 80% at 50% 50%, #000 25%, transparent 100%);
+}
 
 .graph-svg {
   display: block;
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
+  touch-action: none;
 }
 
+/* однократная полоса сканирования при открытии */
+.graph-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, rgba(91, 214, 221, 0.75), transparent);
+  box-shadow: 0 0 14px rgba(91, 214, 221, 0.55);
+  opacity: 0;
+}
+
+/* HUD-рамка с уголками */
+.graph-frame {
+  position: absolute;
+  inset: 12px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    linear-gradient(var(--accent), var(--accent)) left top / 22px 2px,
+    linear-gradient(var(--accent), var(--accent)) left top / 2px 22px,
+    linear-gradient(var(--accent), var(--accent)) right top / 22px 2px,
+    linear-gradient(var(--accent), var(--accent)) right top / 2px 22px,
+    linear-gradient(var(--accent), var(--accent)) left bottom / 22px 2px,
+    linear-gradient(var(--accent), var(--accent)) left bottom / 2px 22px,
+    linear-gradient(var(--accent), var(--accent)) right bottom / 22px 2px,
+    linear-gradient(var(--accent), var(--accent)) right bottom / 2px 22px;
+  background-repeat: no-repeat;
+}
+
+/* статистика в углу */
+.graph-stats {
+  position: absolute;
+  top: 22px;
+  right: 26px;
+  z-index: 3;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+/* HUD-сканер узлов */
+.graph-hud {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  z-index: 3;
+  min-width: 240px;
+  max-width: 320px;
+  pointer-events: none;
+  padding: 10px 14px 12px;
+  background: rgba(10, 10, 15, 0.88);
+  border: 1px solid var(--border-strong);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% 100%,
+    var(--cut) 100%,
+    0 calc(100% - var(--cut))
+  );
+  font-family: var(--font-mono);
+  font-size: 11px;
+  backdrop-filter: blur(4px);
+}
+.graph-hud-title {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  margin-bottom: 6px;
+}
+.hud-row {
+  display: flex;
+  gap: 8px;
+  color: var(--text-soft);
+  line-height: 1.7;
+}
+.hud-key {
+  color: var(--muted);
+  min-width: 62px;
+  flex-shrink: 0;
+}
+.hud-name {
+  display: block;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-bottom: 5px;
+  margin-bottom: 5px;
+  border-bottom: 1px dashed var(--border-strong);
+}
+.hud-action {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  margin-top: 6px;
+}
+.hud-idle {
+  color: var(--muted);
+}
+.hud-caret {
+  color: var(--cyan);
+}
+
+/* ---- рёбра ---- */
 .graph-edge {
-  stroke: rgba(91, 214, 221, 0.18);
+  stroke: rgba(91, 214, 221, 0.16);
   stroke-width: 1;
-  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+  transition: opacity 0.2s ease;
 }
-.graph-edge.is-highlighted {
-  stroke: rgba(240, 229, 30, 0.5);
-  stroke-width: 1.5;
+.graph-svg.has-focus .graph-edge:not(.is-hot) {
+  opacity: 0.18;
+}
+.graph-edge.is-hot {
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-dasharray: 7 5;
+  filter: drop-shadow(0 0 3px rgba(240, 229, 30, 0.5));
+}
+.graph-edge.is-off {
+  opacity: 0.05;
 }
 
+/* ---- узлы ---- */
 .graph-node {
-  cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: opacity 0.2s ease;
 }
-.graph-node:hover circle {
-  stroke-width: 2.5;
-  filter: url(#glow-strong);
+.graph-node-core {
+  fill: #0d0d14;
+  stroke-width: 1.6;
+}
+.graph-node-dot {
+  transition: r 0.15s ease;
+}
+.graph-node-ring {
+  fill: none;
+  stroke-width: 1;
+  opacity: 0.45;
+}
+.graph-node.is-hub .graph-node-ring {
+  stroke-dasharray: 4 6;
+}
+.graph-svg.has-focus .graph-node:not(.is-hot) {
+  opacity: 0.22;
+}
+.graph-node.is-hot .graph-node-ring {
+  opacity: 1;
+}
+.graph-node.is-focus .graph-node-core {
+  stroke-width: 2.6;
 }
 .graph-node.is-dragging {
-  cursor: grabbing;
   transition: none;
 }
+.graph-node.is-off {
+  opacity: 0.07;
+}
 
+/* ---- подписи ---- */
 .graph-label {
   pointer-events: none;
   user-select: none;
-  transition: fill 0.2s ease;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  fill: rgba(185, 185, 198, 0.72);
+  paint-order: stroke;
+  stroke: rgba(8, 8, 13, 0.9);
+  stroke-width: 3px;
+  transition: opacity 0.2s ease;
 }
-.graph-node:hover ~ .graph-label,
-.graph-node:hover + .graph-label {
-  fill: #fff;
+.graph-svg.has-focus .graph-label:not(.is-hot) {
+  opacity: 0.12;
+}
+.graph-label.is-hot {
+  fill: var(--text);
+}
+.graph-label.is-off {
+  opacity: 0.05;
 }
 
+/* ---- легенда-фильтр ---- */
 .graph-footer {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 8px;
   padding: 10px 20px;
   border-top: 1px solid var(--border);
   background: var(--bg-raised);
@@ -1346,18 +1566,101 @@ blockquote cite {
 .graph-legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  padding: 5px 10px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  background: transparent;
+  border: 1px solid var(--border);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.graph-legend-item:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.graph-legend-item.is-on {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--text);
+}
+.graph-legend-count {
+  color: var(--muted);
 }
 .graph-legend-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 1px;
+  transform: rotate(45deg);
   flex-shrink: 0;
+}
+
+/* ---- анимации (только без reduced-motion) ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .graph-overlay.is-active .graph-svg {
+    animation: graph-svg-in 0.5s ease-out;
+  }
+  @keyframes graph-svg-in {
+    from { opacity: 0; transform: scale(0.965); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .graph-overlay.is-active .graph-scanline {
+    animation: graph-scan 1.1s ease-out 0.15s;
+  }
+  @keyframes graph-scan {
+    0%   { opacity: 0.9; transform: translateY(0); }
+    100% { opacity: 0;   transform: translateY(72vh); }
+  }
+
+  .graph-title-caret {
+    animation: graph-caret 1.1s steps(1) infinite;
+  }
+  .hud-caret {
+    animation: graph-caret 0.9s steps(1) infinite;
+  }
+  @keyframes graph-caret {
+    50% { opacity: 0; }
+  }
+
+  .graph-node.is-hub .graph-node-ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: graph-ring-spin 14s linear infinite;
+  }
+  @keyframes graph-ring-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .graph-edge.is-hot {
+    animation: graph-flow 0.5s linear infinite;
+  }
+  @keyframes graph-flow {
+    to { stroke-dashoffset: -12; }
+  }
+}
+
+/* ---- граф на узких экранах ---- */
+@media (max-width: 700px) {
+  .graph-hud {
+    left: 12px;
+    bottom: 12px;
+    min-width: 0;
+    max-width: 62vw;
+    padding: 8px 10px;
+    font-size: 10px;
+  }
+  .graph-stats {
+    top: 14px;
+    right: 16px;
+    font-size: 9px;
+  }
+  .graph-frame {
+    inset: 8px;
+  }
 }
 
 .graph-btn {
