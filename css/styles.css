@@ -1471,3 +1471,261 @@ blockquote cite {
   .graph-close { font-size: 10px; }
   .graph-title { font-size: 13px; }
 }
+
+/* ============================================================
+   Телефоны (≤540px)
+   ============================================================ */
+
+@media (max-width: 540px) {
+  .topbar {
+    gap: 8px;
+    padding: 0 12px;
+    height: 52px;
+  }
+
+  .logo {
+    font-size: 15px;
+  }
+
+  .search {
+    max-width: none;
+  }
+
+  .search-icon {
+    font-size: 15px;
+    left: 10px;
+  }
+
+  #search-input {
+    height: 34px;
+    font-size: 12px;
+    padding: 0 10px 0 30px;
+  }
+
+  /* контент */
+  .content {
+    padding: 16px 14px 60px;
+  }
+
+  .home-title {
+    font-size: clamp(22px, 7vw, 30px);
+  }
+
+  .home-sub {
+    font-size: 15px;
+  }
+
+  .stat {
+    padding: 10px 12px;
+  }
+  .stat-num {
+    font-size: 20px;
+  }
+
+  .card-grid {
+    gap: 12px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+  .card-title {
+    font-size: 17px;
+  }
+
+  .category-row {
+    gap: 8px;
+  }
+  .category-chip {
+    font-size: 12px;
+    padding: 8px 14px;
+  }
+
+  .section-heading h2 {
+    font-size: 18px;
+  }
+
+  /* статья */
+  .article-title {
+    font-size: clamp(22px, 6vw, 28px);
+  }
+  .article-subtitle {
+    font-size: 15px;
+  }
+  .article-body-wrap {
+    gap: 24px;
+  }
+  .article-body {
+    max-width: none;
+  }
+  .article-body h2 {
+    font-size: 18px;
+    padding-left: 10px;
+  }
+
+  .breadcrumbs {
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
+
+  .infobox-row {
+    grid-template-columns: 90px 1fr;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  .infobox-header {
+    padding: 10px 12px;
+  }
+  .infobox-header .infobox-name {
+    font-size: 15px;
+  }
+
+  .related-links {
+    flex-direction: column;
+  }
+  .related-link {
+    text-align: center;
+  }
+
+  /* тикер */
+  .ticker-label {
+    font-size: 10px;
+    padding: 6px 10px;
+  }
+  .ticker-group {
+    font-size: 10px;
+    gap: 14px;
+    padding: 6px 0 6px 14px;
+  }
+
+  /* футер */
+  .footer {
+    flex-direction: column;
+    text-align: center;
+    gap: 4px;
+    padding: 14px 16px;
+  }
+
+  /* терминал */
+  .terminal-body {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+  .terminal-input-line {
+    padding: 8px 14px;
+  }
+  .terminal-header {
+    padding: 10px 14px;
+  }
+  .terminal-title {
+    font-size: 11px;
+  }
+  .terminal-close {
+    font-size: 10px;
+  }
+
+  /* boot */
+  .boot-log {
+    font-size: 12px;
+    min-width: 0;
+    max-width: 90vw;
+  }
+
+  /* 404 */
+  .not-found-code {
+    font-size: 52px;
+  }
+
+  /* граф */
+  .graph-title {
+    font-size: 12px;
+  }
+  .graph-header {
+    padding: 10px 14px;
+  }
+  .graph-footer {
+    gap: 6px;
+    padding: 8px 14px;
+  }
+  .graph-legend-item {
+    font-size: 9px;
+  }
+
+  /* ползунок громкости */
+  .volume-slider {
+    right: 8px;
+    bottom: 74px;
+    padding: 4px 8px;
+  }
+  .volume-slider input[type="range"] {
+    width: 56px;
+  }
+
+  /* сайдбар на телефоне */
+  .sidebar {
+    padding: 8px 12px;
+  }
+  .sidebar-toggle {
+    font-size: 11px;
+    padding: 8px 12px;
+  }
+  .sidebar-nav {
+    padding-top: 8px;
+  }
+  .sidebar-label {
+    font-size: 10px;
+    margin: 16px 0 6px;
+  }
+  .nav-categories a,
+  .nav-articles a {
+    font-size: 13px;
+    padding: 6px 8px;
+  }
+}
+
+/* очень маленькие телефоны (≤380px) */
+@media (max-width: 380px) {
+  .logo {
+    font-size: 12px;
+  }
+  .topbar {
+    gap: 6px;
+    padding: 0 8px;
+    height: 48px;
+  }
+  #search-input {
+    font-size: 11px;
+    height: 30px;
+    padding: 0 6px 0 24px;
+  }
+  .search-icon {
+    font-size: 12px;
+    left: 7px;
+  }
+  .content {
+    padding: 12px 10px 50px;
+  }
+
+  .card {
+    padding: 12px;
+  }
+  .card-title {
+    font-size: 15px;
+  }
+
+  .category-chip {
+    width: 100%;
+  }
+
+  .home-title {
+    font-size: clamp(18px, 6vw, 22px);
+  }
+
+  .stat-num {
+    font-size: 17px;
+  }
+
+  .volume-slider input[type="range"] {
+    width: 40px;
+  }
+}
