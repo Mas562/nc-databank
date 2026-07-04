@@ -31,7 +31,28 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--topbar-h) + 16px);
+}
+
+/* ---- тач-оптимизации для мобильных ---- */
+body { overscroll-behavior: none; }
+a, button, input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+a, button {
+  touch-action: manipulation;
+}
+
+/* ---- focus-visible для клавиатурной навигации ---- */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
 
 body {
   margin: 0;
@@ -289,6 +310,7 @@ body {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%);
+  z-index: 45;
 }
 
 .search-result {
@@ -411,6 +433,7 @@ body {
 .content {
   padding: 36px 48px 80px;
   outline: none;
+  scroll-margin-top: calc(var(--topbar-h) + 16px);
 }
 
 /* ---- хлебные крошки ---- */
@@ -1087,22 +1110,23 @@ blockquote cite {
 }
 
 /* ---- кнопка случайной записи ---- */
-.random-btn {
-  display: block;
-  width: 100%;
-  margin-bottom: 20px;
-  padding: 9px 12px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  color: var(--text-soft);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  text-align: left;
-  cursor: pointer;
-  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
-}
+  .random-btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 9px 12px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-soft);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+    min-height: 44px;
+  }
 .random-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
@@ -1498,7 +1522,7 @@ blockquote cite {
 
   #search-input {
     height: 34px;
-    font-size: 12px;
+    font-size: 16px;
     padding: 0 10px 0 30px;
   }
 
@@ -1524,6 +1548,7 @@ blockquote cite {
 
   .card-grid {
     gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   }
 
   .card {
@@ -1557,6 +1582,10 @@ blockquote cite {
   }
   .article-body {
     max-width: none;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
   .article-body h2 {
     font-size: 18px;
@@ -1604,6 +1633,7 @@ blockquote cite {
     text-align: center;
     gap: 4px;
     padding: 14px 16px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
 
   /* терминал */
@@ -1624,11 +1654,42 @@ blockquote cite {
     font-size: 10px;
   }
 
+  /* результаты поиска — увеличенные touch-targets */
+  .search-result {
+    padding: 14px;
+  }
+  .search-result-title {
+    font-size: 15px;
+  }
+  .search-result-cat {
+    font-size: 12px;
+  }
+
+  /* терминал — оптимизация для виртуальной клавиатуры */
+  .terminal-input {
+    font-size: 16px;
+    min-height: 24px;
+  }
+
+  /* блоки цитат — предотвращение overflow */
+  blockquote {
+    padding: 12px 14px;
+    margin: 16px 0;
+  }
+
+  /* таблицы в статьях — горизонтальный скролл */
+  .article-body table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* boot */
   .boot-log {
     font-size: 12px;
     min-width: 0;
     max-width: 90vw;
+    padding: 16px;
   }
 
   /* 404 */
@@ -1655,6 +1716,7 @@ blockquote cite {
   .volume-slider {
     right: 8px;
     bottom: 74px;
+    bottom: calc(74px + env(safe-area-inset-bottom));
     padding: 4px 8px;
   }
   .volume-slider input[type="range"] {
@@ -1667,10 +1729,15 @@ blockquote cite {
   }
   .sidebar-toggle {
     font-size: 11px;
-    padding: 8px 12px;
+    padding: 10px 12px;
+    min-height: 44px;
   }
   .sidebar-nav {
     padding-top: 8px;
+    max-height: 50vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
   }
   .sidebar-label {
     font-size: 10px;
@@ -1679,7 +1746,35 @@ blockquote cite {
   .nav-categories a,
   .nav-articles a {
     font-size: 13px;
-    padding: 6px 8px;
+    padding: 10px 8px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* кнопки graph/sound — safe-area +防止重叠 */
+  .graph-btn {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    right: 12px;
+    width: 40px;
+    height: 40px;
+  }
+  .sound-btn {
+    bottom: calc(68px + env(safe-area-inset-bottom));
+    right: 12px;
+    width: 40px;
+    height: 40px;
+  }
+
+  /* связанные статьи — полная ширина на мобильных */
+  .related-link {
+    width: 100%;
+  }
+
+  /* статистика — компактная сетка */
+  .home-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
   }
 }
 
@@ -1694,7 +1789,7 @@ blockquote cite {
     height: 48px;
   }
   #search-input {
-    font-size: 11px;
+    font-size: 16px;
     height: 30px;
     padding: 0 6px 0 24px;
   }
@@ -1727,5 +1822,24 @@ blockquote cite {
 
   .volume-slider input[type="range"] {
     width: 40px;
+  }
+
+  /* связанные статьи — компактнее */
+  .related-link {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  /* инфобокс — компактнее */
+  .infobox-row {
+    grid-template-columns: 80px 1fr;
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+  .infobox-header {
+    padding: 8px 10px;
+  }
+  .infobox-header .infobox-name {
+    font-size: 14px;
   }
 }
