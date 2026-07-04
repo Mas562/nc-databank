@@ -34,10 +34,11 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: calc(var(--topbar-h) + 16px);
+  overflow-x: hidden;
 }
 
 /* ---- тач-оптимизации для мобильных ---- */
-body { overscroll-behavior: none; }
+body { overscroll-behavior: none; overflow-x: hidden; }
 a, button, input, select, textarea {
   -webkit-tap-highlight-color: transparent;
 }
@@ -863,7 +864,7 @@ blockquote cite {
 }
 
 @media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: 1fr; overflow-x: hidden; }
 
   .sidebar {
     border-right: none;
@@ -1529,6 +1530,7 @@ blockquote cite {
   /* контент */
   .content {
     padding: 16px 14px 60px;
+    overflow-x: hidden;
   }
 
   .home-title {
@@ -1548,7 +1550,7 @@ blockquote cite {
 
   .card-grid {
     gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+    grid-template-columns: 1fr;
   }
 
   .card {
@@ -1681,6 +1683,19 @@ blockquote cite {
   .article-body table {
     display: block;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* изображения и медиа — предотвращение overflow */
+  .article-body img,
+  .article-body video,
+  .article-body iframe {
+    max-width: 100%;
+    height: auto;
+  }
+  .article-body pre {
+    overflow-x: auto;
+    max-width: 100%;
     -webkit-overflow-scrolling: touch;
   }
 
