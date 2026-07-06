@@ -42,7 +42,7 @@
     navArticles.innerHTML = DB.articles
       .slice()
       .sort((a, b) => a.title.localeCompare(b.title, "ru"))
-      .map((a) => `<li><a href="#/article/${a.id}" data-nav-article="${a.id}">${esc(a.title)}</a></li>`)
+      .map((a) => `<li><a href="#/article/${a.id}"${a.secret ? ' class="is-secret"' : ""} data-nav-article="${a.id}">${esc(a.title)}</a></li>`)
       .join("");
 
     document.getElementById("footer-count").textContent = DB.articles.length;
@@ -178,9 +178,10 @@
       ])}
       <article class="glitch-in">
         <header class="article-header">
-          <span class="article-cat-chip">${cat ? esc(cat.name) : ""}</span>
+          <span class="article-cat-chip">${cat ? esc(cat.name) : ""}</span>${article.secret ? '<span class="article-secret-chip">// BREACH PROTOCOL: РАСШИФРОВАНО</span>' : ""}
           <h1 class="article-title glitch" data-text="${esc(article.title)}" data-decode>${esc(article.title)}</h1>
           <p class="article-subtitle">${esc(article.subtitle || "")}</p>
+          <button class="bd-enter-btn" data-bd="${article.id}" type="button"><span class="bd-enter-icon">▶</span> Воспроизвести брейнданс</button>
         </header>
         <div class="article-body-wrap">
           <div class="article-body">${sections}${relatedHTML}</div>
@@ -615,6 +616,11 @@
 
   /* ---------------- случайная запись ---------------- */
 
+  content.addEventListener("click", function (e) {
+    var b = e.target.closest(".bd-enter-btn");
+    if (b && b.dataset.bd) openBraindance(b.dataset.bd);
+  });
+
   const randomBtn = document.getElementById("random-btn");
   if (randomBtn) {
     randomBtn.addEventListener("click", () => {
@@ -762,7 +768,7 @@
     if (e.key === "Tab") {
       e.preventDefault();
       const partial = input.value.toLowerCase();
-      const commands = ["help", "scan", "lookup", "ping", "noise", "clear", "echo", "whoami", "date", "exit", "glitch", "reboot"];
+      const commands = ["help", "scan", "lookup", "ping", "noise", "clear", "echo", "whoami", "date", "exit", "glitch", "reboot", "breach", "braindance"];
       const match = commands.find((c) => c.startsWith(partial) && c !== partial);
       if (match) input.value = match;
     }
@@ -795,6 +801,14 @@
       case "sound":
       case "audio":  closeTerminal(); toggleSound(); break;
       case "glitch": cmdGlitch(); break;
+      case "breach": closeTerminal(); openBreach(); break;
+      case "bd":
+      case "braindance": {
+        var _r = parseRoute();
+        if (_r.name === "article" && byId(_r.id)) { closeTerminal(); openBraindance(_r.id); }
+        else terminalWriteSlow("БРЕЙНДАНС ДОСТУПЕН ТОЛЬКО НА СТРАНИЦЕ ЗАПИСИ.", "terminal-error");
+        break;
+      }
       case "reboot": cmdReboot(); break;
       case "":       break;
       default:
@@ -817,6 +831,8 @@
       "  glitch      — принудительный глитч",
       "  reboot      — перезагрузка терминала",
       "  graph       — открыть граф знаний",
+      "  breach      — взлом протокола: мини-игра, открывает скрытые записи",
+      "  braindance  — режим брейнданс для текущей статьи",
       "  sound       — вкл/выкл звуковую атмосферу",
       "  exit        — закрыть терминал"
     ].forEach((l) => terminalWrite(l));
@@ -1593,8 +1609,715 @@
     });
   }
 
+  /* ---------------- Breach Protocol (мини-игра) ----------------
+     Правила как в CP2077: выбираем коды в матрице по правилу
+     «строка → столбец → строка», заполняя буфер. Демоны — целевые
+     последовательности; завершённый демон-DATAMINE расшифровывает
+     секретную статью и добавляет её в базу навсегда (localStorage). */
+
+  const BREACH_BYTES = ["1C", "55", "7A", "BD", "E9", "FF"];
+  const BREACH_SIZE = 5;
+  const BREACH_BUFFER = 8;
+  const BREACH_TIME = 60;
+
+  const SECRET_DAEMONS = [
+    { id: "mikoshi",        name: "DATAMINE: MIKOSHI" },
+    { id: "rache-bartmoss", name: "DATAMINE: BARTMOSS" },
+    { id: "mr-blue-eyes",   name: "DATAMINE: BLUE_EYES" }
+  ];
+  const COSMETIC_DAEMONS = ["ICEPICK", "CAMERA SHUTDOWN", "FRIENDLY MODE"];
+
+  let breachOpen = false;
+  let breachTimerId = null;
+
+  function getUnlockedSecrets() {
+    try {
+      const raw = JSON.parse(localStorage.getItem("nc-breach") || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveUnlockedSecrets(ids) {
+    try { localStorage.setItem("nc-breach", JSON.stringify(ids)); } catch (e) {}
+  }
+
+  // добавляет уже разблокированные секретные статьи в базу при старте
+  function restoreSecrets() {
+    const unlocked = getUnlockedSecrets();
+    (DB.secret || []).forEach((a) => {
+      if (unlocked.indexOf(a.id) !== -1 && !DB.articles.some((x) => x.id === a.id)) {
+        DB.articles.push(a);
+      }
+    });
+  }
+
+  function unlockSecret(id) {
+    const unlocked = getUnlockedSecrets();
+    if (unlocked.indexOf(id) !== -1) return false;
+    const article = (DB.secret || []).find((a) => a.id === id);
+    if (!article) return false;
+    unlocked.push(id);
+    saveUnlockedSecrets(unlocked);
+    if (!DB.articles.some((a) => a.id === id)) {
+      DB.articles.push(article);
+      renderSidebar();
+      highlightNav(parseRoute());
+    }
+    return true;
+  }
+
+  function openBreach() {
+    if (breachOpen) return;
+    breachOpen = true;
+
+    const overlay = document.createElement("div");
+    overlay.className = "breach-overlay";
+    overlay.id = "breach-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+      <div class="breach-header">
+        <span class="breach-title"><span class="breach-title-dim">NC//DATABANK ::</span> BREACH PROTOCOL <span class="breach-title-ver">v2.77</span></span>
+        <span class="breach-close">[ESC] прервать взлом</span>
+      </div>
+      <div class="breach-body">
+        <div class="breach-main" id="breach-main"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add("is-active"));
+
+    function onBreachKey(e) {
+      if (e.key === "Escape") closeBreach();
+    }
+    document.addEventListener("keydown", onBreachKey);
+    overlay._keyHandler = onBreachKey;
+
+    startBreachGame();
+  }
+
+  function closeBreach() {
+    if (breachTimerId) { clearInterval(breachTimerId); breachTimerId = null; }
+    const overlay = document.getElementById("breach-overlay");
+    if (overlay) {
+      overlay.classList.remove("is-active");
+      if (overlay._keyHandler) document.removeEventListener("keydown", overlay._keyHandler);
+      setTimeout(() => overlay.remove(), 250);
+    }
+    breachOpen = false;
+  }
+
+  function startBreachGame() {
+    const main = document.getElementById("breach-main");
+    if (!main) return;
+    if (breachTimerId) { clearInterval(breachTimerId); breachTimerId = null; }
+
+    const overlay = document.getElementById("breach-overlay");
+    if (overlay) overlay.classList.remove("is-success", "is-fail");
+
+    /* ---- генерация: сначала валидный путь, демоны — его отрезки,
+       поэтому матрица гарантированно решаема одной цепочкой ---- */
+    function tryPath() {
+      var used = {};
+      var path = [];
+      var axis = "row";
+      var line = 0;
+      for (var step = 0; step < BREACH_BUFFER; step++) {
+        var options = [];
+        for (var i = 0; i < BREACH_SIZE; i++) {
+          var r = axis === "row" ? line : i;
+          var c = axis === "row" ? i : line;
+          if (!used[r + ":" + c]) options.push([r, c]);
+        }
+        if (!options.length) return null;
+        var pick = options[(Math.random() * options.length) | 0];
+        used[pick[0] + ":" + pick[1]] = true;
+        path.push(pick);
+        line = axis === "row" ? pick[1] : pick[0];
+        axis = axis === "row" ? "col" : "row";
+      }
+      return path;
+    }
+
+    var path = null;
+    while (!path) path = tryPath();
+
+    var grid = [];
+    for (var r = 0; r < BREACH_SIZE; r++) {
+      var row = [];
+      for (var c = 0; c < BREACH_SIZE; c++) {
+        row.push(BREACH_BYTES[(Math.random() * BREACH_BYTES.length) | 0]);
+      }
+      grid.push(row);
+    }
+    var pathBytes = path.map(function (p) { return grid[p[0]][p[1]]; });
+
+    var unlockedIds = getUnlockedSecrets();
+    var locked = SECRET_DAEMONS.filter(function (d) { return unlockedIds.indexOf(d.id) === -1; });
+    var windows = [[0, 2], [2, 5], [4, 8]];
+    var daemons = windows.map(function (w, i) {
+      var reward = locked[i] || null;
+      return {
+        seq: pathBytes.slice(w[0], w[1]),
+        name: reward ? reward.name : COSMETIC_DAEMONS[i % COSMETIC_DAEMONS.length],
+        reward: reward,
+        done: false,
+        dead: false
+      };
+    });
+
+    var st = {
+      buffer: [],
+      used: {},
+      axis: "row",
+      line: 0,
+      started: false,
+      finished: false,
+      timeLeft: BREACH_TIME,
+      unlockedNow: []
+    };
+
+    /* ---- разметка ---- */
+    var gridHTML = "";
+    for (var gr = 0; gr < BREACH_SIZE; gr++) {
+      for (var gc = 0; gc < BREACH_SIZE; gc++) {
+        gridHTML += '<button type="button" class="breach-cell" data-r="' + gr + '" data-c="' + gc + '">' + grid[gr][gc] + "</button>";
+      }
+    }
+
+    var bufferHTML = "";
+    for (var b = 0; b < BREACH_BUFFER; b++) {
+      bufferHTML += '<span class="breach-slot" data-slot="' + b + '"></span>';
+    }
+
+    main.innerHTML = `
+      <div class="breach-timer">
+        <span class="breach-timer-label">ВРЕМЯ НА ВЗЛОМ</span>
+        <div class="breach-timer-bar"><div class="breach-timer-fill" id="breach-timer-fill"></div></div>
+        <span class="breach-timer-num" id="breach-timer-num">${BREACH_TIME.toFixed(1)}</span>
+      </div>
+      <div class="breach-columns">
+        <div class="breach-left">
+          <div class="breach-panel-label">// БУФЕР ПАМЯТИ</div>
+          <div class="breach-buffer" id="breach-buffer">${bufferHTML}</div>
+          <div class="breach-panel-label">// МАТРИЦА КОДА — СЕКВЕНСОР</div>
+          <div class="breach-grid" id="breach-grid">${gridHTML}</div>
+          <p class="breach-hint">строка → столбец → строка: выбирайте код на подсвеченной линии</p>
+        </div>
+        <div class="breach-right">
+          <div class="breach-panel-label">// ДЕМОНЫ К ЗАГРУЗКЕ</div>
+          <div class="breach-daemons" id="breach-daemons"></div>
+          <div class="breach-log" id="breach-log"></div>
+        </div>
+      </div>`;
+
+    var gridEl = document.getElementById("breach-grid");
+    var cells = Array.prototype.slice.call(gridEl.querySelectorAll(".breach-cell"));
+    var slots = Array.prototype.slice.call(document.querySelectorAll("#breach-buffer .breach-slot"));
+    var daemonsEl = document.getElementById("breach-daemons");
+    var logEl = document.getElementById("breach-log");
+    var timerFill = document.getElementById("breach-timer-fill");
+    var timerNum = document.getElementById("breach-timer-num");
+
+    function log(html, cls) {
+      var line = document.createElement("div");
+      line.className = "breach-log-line" + (cls ? " " + cls : "");
+      line.innerHTML = html;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    /* ---- состояние демона относительно буфера ---- */
+    function daemonState(seq, buffer) {
+      for (var i = 0; i + seq.length <= buffer.length; i++) {
+        var ok = true;
+        for (var j = 0; j < seq.length; j++) {
+          if (buffer[i + j] !== seq[j]) { ok = false; break; }
+        }
+        if (ok) return { done: true, progress: seq.length };
+      }
+      var max = Math.min(seq.length - 1, buffer.length);
+      for (var len = max; len > 0; len--) {
+        var ok2 = true;
+        for (var j2 = 0; j2 < len; j2++) {
+          if (buffer[buffer.length - len + j2] !== seq[j2]) { ok2 = false; break; }
+        }
+        if (ok2) return { done: false, progress: len };
+      }
+      return { done: false, progress: 0 };
+    }
+
+    function anyDone() {
+      return daemons.some(function (d) { return d.done; });
+    }
+
+    function isSelectable(rr, cc) {
+      if (st.finished || st.used[rr + ":" + cc]) return false;
+      return st.axis === "row" ? rr === st.line : cc === st.line;
+    }
+
+    function render() {
+      cells.forEach(function (cell) {
+        var rr = +cell.dataset.r, cc = +cell.dataset.c;
+        var used = !!st.used[rr + ":" + cc];
+        cell.classList.toggle("is-used", used);
+        cell.classList.toggle("is-sel", isSelectable(rr, cc));
+        if (used && cell.textContent !== "--") cell.textContent = "--";
+      });
+      gridEl.classList.toggle("is-finished", st.finished);
+
+      slots.forEach(function (slot, i) {
+        slot.textContent = st.buffer[i] || "";
+        slot.classList.toggle("is-filled", i < st.buffer.length);
+      });
+
+      var remaining = BREACH_BUFFER - st.buffer.length;
+      daemonsEl.innerHTML = daemons.map(function (d, i) {
+        var stt = d.done ? { done: true, progress: d.seq.length } : daemonState(d.seq, st.buffer);
+        if (!d.done && !st.finished && d.seq.length - stt.progress > remaining) d.dead = true;
+        var cls = d.done ? " is-done" : (d.dead ? " is-dead" : "");
+        var seqHTML = d.seq.map(function (byte, j) {
+          return '<span class="breach-seq-byte' + (j < stt.progress ? " is-hit" : "") + '">' + byte + "</span>";
+        }).join("");
+        var status = d.done ? "ЗАГРУЖЕН" : (d.dead ? "НЕДОСТУПЕН" : "В ОЧЕРЕДИ");
+        return '<div class="breach-daemon' + cls + '">' +
+          '<div class="breach-daemon-seq">' + seqHTML + "</div>" +
+          '<div class="breach-daemon-meta"><span class="breach-daemon-name">' + d.name + '</span>' +
+          '<span class="breach-daemon-status">' + status + "</span></div></div>";
+      }).join("");
+    }
+
+    function updateTimer() {
+      var pct = Math.max(0, st.timeLeft / BREACH_TIME) * 100;
+      timerFill.style.width = pct + "%";
+      timerNum.textContent = st.timeLeft.toFixed(1);
+      timerFill.classList.toggle("is-low", st.timeLeft <= 15);
+      timerNum.classList.toggle("is-low", st.timeLeft <= 15);
+    }
+
+    function startTimer() {
+      if (breachTimerId) return;
+      breachTimerId = setInterval(function () {
+        st.timeLeft = Math.max(0, st.timeLeft - 0.1);
+        updateTimer();
+        if (st.timeLeft <= 0) finish(anyDone() ? "partial" : "fail");
+      }, 100);
+    }
+
+    function finish(kind) {
+      if (st.finished) return;
+      st.finished = true;
+      if (breachTimerId) { clearInterval(breachTimerId); breachTimerId = null; }
+      render();
+      if (overlay) overlay.classList.add(kind === "fail" ? "is-fail" : "is-success");
+
+      var title = kind === "success"
+        ? "ВЗЛОМ УСПЕШЕН — ВСЕ ДЕМОНЫ ЗАГРУЖЕНЫ"
+        : kind === "partial"
+          ? "СОЕДИНЕНИЕ ЗАКРЫТО — ЧАСТИЧНЫЙ УСПЕХ"
+          : "ВЗЛОМ ПРОВАЛЕН — ICE ВЫТЕСНИЛ ВАС ИЗ СИСТЕМЫ";
+
+      var unlockedHTML = st.unlockedNow.map(function (id) {
+        var a = (DB.secret || []).find(function (x) { return x.id === id; });
+        return a
+          ? '<a class="breach-unlock-link" href="#/article/' + a.id + '">→ РАСШИФРОВАНА ЗАПИСЬ: ' + esc(a.title) + "</a>"
+          : "";
+      }).join("");
+
+      var resEl = document.createElement("div");
+      resEl.className = "breach-result " + (kind === "fail" ? "is-fail" : "is-ok");
+      resEl.innerHTML =
+        '<div class="breach-result-title">' + title + "</div>" +
+        unlockedHTML +
+        (kind !== "fail" && !st.unlockedNow.length ? '<div class="breach-result-note">НОВЫХ ДАННЫХ НЕ ПОЛУЧЕНО</div>' : "") +
+        '<div class="breach-result-actions">' +
+        '<button type="button" class="breach-btn" id="breach-retry">[ ПОВТОРИТЬ ]</button>' +
+        '<button type="button" class="breach-btn" id="breach-exit">[ ВЫЙТИ ]</button>' +
+        "</div>";
+      logEl.appendChild(resEl);
+      logEl.scrollTop = logEl.scrollHeight;
+
+      document.getElementById("breach-retry").addEventListener("click", startBreachGame);
+      document.getElementById("breach-exit").addEventListener("click", closeBreach);
+      resEl.querySelectorAll(".breach-unlock-link").forEach(function (link) {
+        link.addEventListener("click", function () { closeBreach(); });
+      });
+    }
+
+    gridEl.addEventListener("click", function (e) {
+      var cell = e.target.closest(".breach-cell");
+      if (!cell || st.finished) return;
+      var rr = +cell.dataset.r, cc = +cell.dataset.c;
+      if (!isSelectable(rr, cc)) return;
+
+      if (!st.started) {
+        st.started = true;
+        startTimer();
+      }
+
+      st.used[rr + ":" + cc] = true;
+      st.buffer.push(grid[rr][cc]);
+      st.line = st.axis === "row" ? cc : rr;
+      st.axis = st.axis === "row" ? "col" : "row";
+
+      daemons.forEach(function (d) {
+        if (d.done) return;
+        if (daemonState(d.seq, st.buffer).done) {
+          d.done = true;
+          d.dead = false;
+          log("ДЕМОН ЗАГРУЖЕН: " + d.name, "is-ok");
+          if (d.reward && unlockSecret(d.reward.id)) {
+            st.unlockedNow.push(d.reward.id);
+            var art = (DB.secret || []).find(function (x) { return x.id === d.reward.id; });
+            if (art) log("ДЕШИФРОВКА ДАННЫХ... ЗАПИСЬ «" + esc(art.title).toUpperCase() + "» ДОБАВЛЕНА В БАЗУ", "is-unlock");
+          }
+        }
+      });
+
+      render();
+
+      if (daemons.every(function (d) { return d.done; })) {
+        finish("success");
+      } else if (st.buffer.length >= BREACH_BUFFER) {
+        finish(anyDone() ? "partial" : "fail");
+      }
+    });
+
+    log("ПОДКЛЮЧЕНИЕ К УЗЛУ NET://WATSON.SEC-7... ОК");
+    log("ОБНАРУЖЕН УЯЗВИМЫЙ СЕГМЕНТ ДАННЫХ");
+    log("ТАЙМЕР ЗАПУСТИТСЯ ПОСЛЕ ПЕРВОГО ВЫБОРА");
+    render();
+    updateTimer();
+  }
+  /* ---------------- Брейнданс-режим чтения ----------------
+     Статья проигрывается как запись воспоминания: плейхед по
+     таймлайну, сцены сменяются с декодированием, три слоя анализа
+     (VISUAL / AUDIO / THERMAL) вытаскивают разные зацепки. */
+
+  let bdOpen = false;
+  let bdRafId = null;
+  let bdState = null;
+
+  const BD_LAYERS = [
+    { id: "visual",  name: "ВИЗУАЛ",  key: "V" },
+    { id: "audio",   name: "АУДИО",   key: "A" },
+    { id: "thermal", name: "ТЕПЛО",   key: "T" }
+  ];
+
+  // вытаскивает ссылки на другие статьи из html-фрагмента
+  function bdEntities(html) {
+    var box = document.createElement("div");
+    box.innerHTML = html || "";
+    var out = [];
+    var seen = {};
+    box.querySelectorAll('a[href^="#/article/"]').forEach(function (a) {
+      var id = a.getAttribute("href").replace("#/article/", "");
+      if (seen[id]) return;
+      seen[id] = true;
+      out.push({ id: id, text: a.textContent.trim() });
+    });
+    return out;
+  }
+
+  function openBraindance(id) {
+    if (bdOpen) return;
+    var article = byId(id);
+    if (!article) return;
+    bdOpen = true;
+
+    var cat = catById(article.category);
+
+    // сцены: вступление + секции
+    var frames = [{
+      heading: "// НАЧАЛО ЗАПИСИ",
+      html: '<p class="bd-establishing">' + esc(article.subtitle || article.title) + "</p>",
+      entities: []
+    }];
+    (article.sections || []).forEach(function (s) {
+      frames.push({ heading: s.heading, html: s.html, entities: bdEntities(s.html) });
+    });
+    (article.related || []).length && frames.push({
+      heading: "// СВЯЗАННЫЕ УЗЛЫ",
+      html: '<p class="bd-establishing">Обнаружены перекрёстные связи в памяти субъекта.</p>',
+      entities: (article.related || []).map(byId).filter(Boolean).map(function (r) {
+        return { id: r.id, text: r.title };
+      })
+    });
+
+    // длительность сцены пропорциональна объёму текста
+    frames.forEach(function (f) {
+      var len = f.html.replace(/<[^>]+>/g, "").length;
+      f.dur = Math.max(4, Math.min(9, 3 + len / 220));
+    });
+    var total = frames.reduce(function (s, f) { return s + f.dur; }, 0);
+    var starts = [];
+    frames.reduce(function (acc, f, i) { starts[i] = acc; return acc + f.dur; }, 0);
+
+    var infoRows = Object.entries(article.infobox || {});
+
+    var overlay = document.createElement("div");
+    overlay.className = "bd-overlay bd-visual";
+    overlay.id = "bd-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+      <div class="bd-scanlines" aria-hidden="true"></div>
+      <div class="bd-vignette" aria-hidden="true"></div>
+      <div class="bd-header">
+        <span class="bd-title"><span class="bd-title-dim">BRAINDANCE ::</span> МОНТАЖНЫЙ СТОЛ</span>
+        <span class="bd-subject">СУБЪЕКТ: ${esc(article.title)}${cat ? " · " + esc(cat.name) : ""}</span>
+        <span class="bd-close">[ESC] выход</span>
+      </div>
+
+      <div class="bd-stage">
+        <div class="bd-crosshair bd-crosshair-h" aria-hidden="true"></div>
+        <div class="bd-crosshair bd-crosshair-v" aria-hidden="true"></div>
+        <div class="bd-frame-corners" aria-hidden="true"></div>
+
+        <div class="bd-scene" id="bd-scene">
+          <h2 class="bd-scene-heading glitch" id="bd-scene-heading" data-text=""></h2>
+          <div class="bd-scene-body" id="bd-scene-body"></div>
+        </div>
+
+        <aside class="bd-annot" id="bd-annot"></aside>
+
+        <div class="bd-hud-tl" aria-hidden="true">● REC</div>
+        <div class="bd-hud-tr" id="bd-timecode" aria-hidden="true">00:00 / 00:00</div>
+      </div>
+
+      <div class="bd-console">
+        <div class="bd-layers" id="bd-layers">
+          ${BD_LAYERS.map(function (l) {
+            return '<button type="button" class="bd-layer" data-layer="' + l.id + '">' +
+              '<span class="bd-layer-key">[' + l.key + ']</span> ' + l.name + "</button>";
+          }).join("")}
+        </div>
+
+        <div class="bd-transport">
+          <button type="button" class="bd-btn" id="bd-rewind" title="В начало">⏮</button>
+          <button type="button" class="bd-btn bd-btn-play" id="bd-play" title="Пуск/пауза">⏸</button>
+          <button type="button" class="bd-btn" id="bd-speed" title="Скорость">1×</button>
+        </div>
+
+        <div class="bd-timeline" id="bd-timeline">
+          <div class="bd-track" id="bd-track"></div>
+          <div class="bd-playhead" id="bd-playhead"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(function () { overlay.classList.add("is-active"); });
+
+    var trackEl = document.getElementById("bd-track");
+    var playhead = document.getElementById("bd-playhead");
+    var sceneHeading = document.getElementById("bd-scene-heading");
+    var sceneBody = document.getElementById("bd-scene-body");
+    var annotEl = document.getElementById("bd-annot");
+    var timecode = document.getElementById("bd-timecode");
+    var playBtn = document.getElementById("bd-play");
+    var speedBtn = document.getElementById("bd-speed");
+
+    // сегменты таймлайна
+    trackEl.innerHTML = frames.map(function (f, i) {
+      var w = (f.dur / total) * 100;
+      var poi = f.entities.length ? '<span class="bd-clip-poi"></span>' : "";
+      return '<div class="bd-clip" data-frame="' + i + '" style="width:' + w + '%">' +
+        '<span class="bd-clip-label">' + esc(f.heading.replace(/^\/\/\s*/, "")) + "</span>" + poi + "</div>";
+    }).join("");
+    var clipEls = Array.prototype.slice.call(trackEl.querySelectorAll(".bd-clip"));
+
+    bdState = {
+      frames: frames, starts: starts, total: total, infoRows: infoRows,
+      pos: 0, playing: !REDUCED_MOTION, speed: 1, layer: "visual",
+      current: -1, lastTs: 0
+    };
+
+    function frameAt(pos) {
+      for (var i = frames.length - 1; i >= 0; i--) {
+        if (pos >= starts[i]) return i;
+      }
+      return 0;
+    }
+
+    function fmt(sec) {
+      var s = Math.floor(sec);
+      return ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + (s % 60)).slice(-2);
+    }
+
+    function renderAnnot(fi) {
+      var f = frames[fi];
+      var layer = bdState.layer;
+      if (layer === "thermal") {
+        var ents = f.entities;
+        annotEl.innerHTML = '<div class="bd-annot-label">// ТЕПЛОКАРТА · ОБЪЕКТЫ</div>' +
+          (ents.length
+            ? ents.map(function (e) {
+                return '<button type="button" class="bd-poi" data-goto="' + esc(e.id) + '">' +
+                  '<span class="bd-poi-dot"></span>' + esc(e.text) + "</button>";
+              }).join("")
+            : '<div class="bd-annot-empty">В КАДРЕ НЕТ ГОРЯЧИХ ОБЪЕКТОВ</div>');
+      } else if (layer === "audio") {
+        annotEl.innerHTML = '<div class="bd-annot-label">// АУДИО · ПЕРЕХВАТ ДАННЫХ</div>' +
+          '<div class="bd-wave" aria-hidden="true">' +
+            Array.from({ length: 28 }).map(function (_, i) {
+              return '<span style="--d:' + (i % 7) + '"></span>';
+            }).join("") + "</div>" +
+          (infoRows.length
+            ? infoRows.map(function (kv) {
+                return '<div class="bd-audio-row"><span class="bd-audio-key">' + esc(kv[0]) +
+                  '</span><span class="bd-audio-val">' + esc(kv[1]) + "</span></div>";
+              }).join("")
+            : '<div class="bd-annot-empty">ДОСЬЕ НЕ ОБНАРУЖЕНО</div>');
+      } else {
+        annotEl.innerHTML = '<div class="bd-annot-label">// ВИЗУАЛ · ЧИСТЫЙ КАДР</div>' +
+          '<div class="bd-annot-meta">СЦЕНА ' + (fi + 1) + " / " + frames.length + "</div>" +
+          '<div class="bd-annot-meta">ЦЕЛОСТНОСТЬ: ' + (94 + (fi % 6)) + "%</div>" +
+          '<div class="bd-annot-hint">Переключите слой [A]/[T], чтобы вскрыть скрытые данные памяти.</div>';
+      }
+    }
+
+    function showFrame(fi) {
+      if (fi === bdState.current) return;
+      bdState.current = fi;
+      var f = frames[fi];
+      sceneHeading.dataset.text = f.heading;
+      sceneHeading.textContent = f.heading;
+      sceneBody.innerHTML = f.html;
+      clipEls.forEach(function (el, i) { el.classList.toggle("is-current", i === fi); });
+      renderAnnot(fi);
+      if (!REDUCED_MOTION) {
+        decodeText(sceneHeading, 400);
+        var sc = document.getElementById("bd-scene");
+        sc.classList.remove("is-in");
+        void sc.offsetWidth;
+        sc.classList.add("is-in");
+      }
+    }
+
+    function renderPos() {
+      var pct = (bdState.pos / total) * 100;
+      playhead.style.left = pct + "%";
+      timecode.textContent = fmt(bdState.pos) + " / " + fmt(total);
+      showFrame(frameAt(bdState.pos));
+    }
+
+    function setLayer(layer) {
+      bdState.layer = layer;
+      overlay.classList.remove("bd-visual", "bd-audio", "bd-thermal");
+      overlay.classList.add("bd-" + layer);
+      document.querySelectorAll(".bd-layer").forEach(function (b) {
+        b.classList.toggle("is-active", b.dataset.layer === layer);
+      });
+      renderAnnot(bdState.current < 0 ? 0 : bdState.current);
+    }
+
+    function setPlaying(on) {
+      bdState.playing = on;
+      playBtn.textContent = on ? "⏸" : "▶";
+      overlay.classList.toggle("is-paused", !on);
+      if (on && bdState.pos >= total - 0.05) bdState.pos = 0;
+    }
+
+    function loop(ts) {
+      if (!bdOpen) { bdRafId = null; return; }
+      if (bdState.playing) {
+        if (!bdState.lastTs) bdState.lastTs = ts;
+        var dt = (ts - bdState.lastTs) / 1000;
+        bdState.lastTs = ts;
+        bdState.pos += dt * bdState.speed;
+        if (bdState.pos >= total) {
+          bdState.pos = total;
+          setPlaying(false);
+        }
+        renderPos();
+      } else {
+        bdState.lastTs = ts;
+      }
+      bdRafId = requestAnimationFrame(loop);
+    }
+
+    // управление
+    document.getElementById("bd-layers").addEventListener("click", function (e) {
+      var b = e.target.closest(".bd-layer");
+      if (b) setLayer(b.dataset.layer);
+    });
+    playBtn.addEventListener("click", function () { setPlaying(!bdState.playing); });
+    document.getElementById("bd-rewind").addEventListener("click", function () {
+      bdState.pos = 0; renderPos(); setPlaying(true);
+    });
+    speedBtn.addEventListener("click", function () {
+      var seq = [1, 1.5, 2, 0.5];
+      var next = seq[(seq.indexOf(bdState.speed) + 1) % seq.length];
+      bdState.speed = next;
+      speedBtn.textContent = (next % 1 === 0 ? next : next.toFixed(1)) + "×";
+    });
+
+    var timelineEl = document.getElementById("bd-timeline");
+    function scrubTo(clientX) {
+      var rect = timelineEl.getBoundingClientRect();
+      var p = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      bdState.pos = p * total;
+      bdState.lastTs = 0;
+      renderPos();
+    }
+    var scrubbing = false;
+    timelineEl.addEventListener("pointerdown", function (e) {
+      scrubbing = true;
+      timelineEl.setPointerCapture(e.pointerId);
+      setPlaying(false);
+      scrubTo(e.clientX);
+    });
+    timelineEl.addEventListener("pointermove", function (e) {
+      if (scrubbing) scrubTo(e.clientX);
+    });
+    timelineEl.addEventListener("pointerup", function () { scrubbing = false; });
+
+    clipEls.forEach(function (el) {
+      el.addEventListener("click", function () {
+        bdState.pos = starts[+el.dataset.frame] + 0.01;
+        bdState.lastTs = 0;
+        setPlaying(false);
+        renderPos();
+      });
+    });
+
+    annotEl.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-goto]");
+      if (b) { closeBraindance(); location.hash = "#/article/" + b.dataset.goto; }
+    });
+
+    function onBdKey(e) {
+      if (e.key === "Escape") { closeBraindance(); return; }
+      if (e.key === " ") { e.preventDefault(); setPlaying(!bdState.playing); return; }
+      var k = e.key.toLowerCase();
+      if (k === "v" || e.code === "KeyV") setLayer("visual");
+      else if (k === "a" || e.code === "KeyA") setLayer("audio");
+      else if (k === "t" || e.code === "KeyT") setLayer("thermal");
+    }
+    document.addEventListener("keydown", onBdKey);
+    overlay._keyHandler = onBdKey;
+
+    document.querySelector(".bd-close").addEventListener("click", closeBraindance);
+
+    setLayer("visual");
+    setPlaying(bdState.playing);
+    renderPos();
+    bdRafId = requestAnimationFrame(loop);
+  }
+
+  function closeBraindance() {
+    if (bdRafId) cancelAnimationFrame(bdRafId);
+    bdRafId = null;
+    bdState = null;
+    var overlay = document.getElementById("bd-overlay");
+    if (overlay) {
+      overlay.classList.remove("is-active");
+      if (overlay._keyHandler) document.removeEventListener("keydown", overlay._keyHandler);
+      setTimeout(function () { overlay.remove(); }, 250);
+    }
+    bdOpen = false;
+  }
   /* ---------------- старт ---------------- */
 
+  restoreSecrets();
   renderSidebar();
   window.addEventListener("hashchange", route);
   route();
