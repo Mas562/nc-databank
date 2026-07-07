@@ -295,7 +295,8 @@
   // случайные амбиентные глитчи: раз в 4–10 секунд дёргаем случайный заголовок
   function ambientGlitchLoop() {
     if (REDUCED_MOTION) return;
-    const delay = 4000 + Math.random() * 6000;
+    const stage = relicStage();
+    const delay = (4000 + Math.random() * 6000) / (1 + stage * 0.9);
     setTimeout(() => {
       const targets = document.querySelectorAll(".glitch");
       if (targets.length && Math.random() < 0.8) {
@@ -303,6 +304,15 @@
       } else {
         logo.classList.add("is-glitching");
         setTimeout(() => logo.classList.remove("is-glitching"), 550);
+      }
+      // при деградации Реликта — дополнительные помехи
+      if (stage >= 2 && targets.length && Math.random() < 0.3) {
+        burstGlitch(targets[(Math.random() * targets.length) | 0]);
+      }
+      if (stage >= 2 && glitchFlash && Math.random() < 0.15 + stage * 0.12) {
+        glitchFlash.classList.remove("is-active");
+        void glitchFlash.offsetWidth;
+        glitchFlash.classList.add("is-active");
       }
       ambientGlitchLoop();
     }, delay);
@@ -326,6 +336,24 @@
   function statusTickerLoop() {
     if (REDUCED_MOTION || !statusLine) return;
     setTimeout(() => {
+      const stage = relicStage();
+      const johnnyChance = stage === 0 ? 0 : 0.14 + stage * 0.17;
+      if (stage > 0 && Math.random() < johnnyChance) {
+        // сигнал Джонни перехватывает строку статуса
+        const jmsg = RELIC_STATUS[(Math.random() * RELIC_STATUS.length) | 0];
+        statusLine.classList.remove("meta-warn");
+        statusLine.classList.add("meta-relic");
+        statusLine.dataset.text = jmsg;
+        decodeText(statusLine, 350);
+        setTimeout(() => {
+          statusLine.classList.remove("meta-relic");
+          statusLine.dataset.text = STATUS_MESSAGES[0];
+          decodeText(statusLine, 350);
+        }, 2600);
+        statusTickerLoop();
+        return;
+      }
+
       const isWarning = Math.random() < 0.12;
       const pool = isWarning ? STATUS_WARNINGS : STATUS_MESSAGES;
       const msg = pool[(Math.random() * pool.length) | 0];
@@ -768,7 +796,7 @@
     if (e.key === "Tab") {
       e.preventDefault();
       const partial = input.value.toLowerCase();
-      const commands = ["help", "scan", "lookup", "ping", "noise", "clear", "echo", "whoami", "date", "exit", "glitch", "reboot", "breach", "braindance"];
+      const commands = ["help", "scan", "lookup", "ping", "noise", "clear", "echo", "whoami", "date", "exit", "glitch", "reboot", "breach", "braindance", "omega-blockers"];
       const match = commands.find((c) => c.startsWith(partial) && c !== partial);
       if (match) input.value = match;
     }
@@ -802,6 +830,16 @@
       case "audio":  closeTerminal(); toggleSound(); break;
       case "glitch": cmdGlitch(); break;
       case "breach": closeTerminal(); openBreach(); break;
+      case "omega":
+      case "blockers":
+      case "omega-blockers":
+        applyOmegaBlockers();
+        terminalWriteSlow("ВВОД ОМЕГА-БЛОКАТОРОВ...");
+        setTimeout(function () {
+          terminalWriteSlow("АКТИВНОСТЬ РЕЛИКТА ПОДАВЛЕНА. ЦЕЛОСТНОСТЬ ВОССТАНАВЛИВАЕТСЯ.", "terminal-ok");
+          terminalWriteSlow("ЭФФЕКТ ВРЕМЕННЫЙ. ОН ВЕРНЁТСЯ.", "terminal-warn");
+        }, 500);
+        break;
       case "bd":
       case "braindance": {
         var _r = parseRoute();
@@ -833,6 +871,7 @@
       "  graph       — открыть граф знаний",
       "  breach      — взлом протокола: мини-игра, открывает скрытые записи",
       "  braindance  — режим брейнданс для текущей статьи",
+      "  omega-blockers — подавить активность Реликта",
       "  sound       — вкл/выкл звуковую атмосферу",
       "  exit        — закрыть терминал"
     ].forEach((l) => terminalWrite(l));
@@ -2315,6 +2354,228 @@
     }
     bdOpen = false;
   }
+  /* ============================================================
+     Деградация Реликта — «Джонни в твоей голове»
+     Чем дольше сессия, тем ниже целостность Реликта: интерфейс
+     сыпется сильнее, а Джонни Сильверхенд прорывается сообщениями.
+     Команда терминала omega-blockers временно глушит его.
+     ============================================================ */
+
+  var RELIC_CAP = 300;            // секунд до полного «захвата»
+  var relicElapsed = 0;
+  var relicStageNow = -1;
+  var relicLineEl = null;
+  var relicVignette = null;
+  var relicMsgTimer = null;
+  var relicOmegaUntil = 0;
+
+  try {
+    var saved = parseInt(sessionStorage.getItem("nc-relic"), 10);
+    if (!isNaN(saved)) relicElapsed = Math.max(0, Math.min(RELIC_CAP, saved));
+  } catch (e) {}
+
+  function relicInstability() {
+    if (Date.now() < relicOmegaUntil) return 0;   // блокаторы держат Джонни
+    return Math.min(100, relicElapsed / 3);
+  }
+  function relicStage() {
+    var i = relicInstability();
+    if (i < 15) return 0;
+    if (i < 40) return 1;
+    if (i < 70) return 2;
+    return 3;
+  }
+
+  // реплики Джонни по стадиям
+  var JOHNNY_WHISPER = [
+    "Эй. Ты ещё там, в своей черепушке?",
+    "Чувствуешь холодок в затылке? Это я устраиваюсь поудобнее.",
+    "Долго ты будешь пялиться в эти буквы?",
+    "Реликт тикает, дружище. Слышишь?",
+    "Я тут. Я всегда тут."
+  ];
+  var JOHNNY_TAUNT = [
+    "Хватит листать эту хрень. В Найт-Сити так не выживают.",
+    "Два процента, детка. Ровно столько от тебя останется.",
+    "Ты труп, который ещё не в курсе. Как и я когда-то.",
+    "Арасака сожрёт тебя и не подавится. Уж поверь.",
+    "Опусти базу данных и достань ствол, нахрен.",
+    "Этот город горит. Дай мне спичку — и досмотрим шоу."
+  ];
+  var JOHNNY_BREAK = [
+    "ЭЙ! Слышишь меня, засранец?! Это МОЯ голова теперь.",
+    "Ещё немного — и я сотру тебя к чертям. Ничего личного.",
+    "Твои нейроны — мой дом. Проваливай.",
+    "Wake the fuck up, samurai. У нас город жечь.",
+    "Хватит. Играть. В библиотекаря. Бля.",
+    "Я забираю управление. Ты своё уже пожил."
+  ];
+  var JOHNNY_OMEGA = [
+    "Омега-блокаторы? Серьёзно?! Трус.",
+    "Глуши меня сколько влезешь. Я никуда не денусь.",
+    "Прячешься за таблетками, как трусливый корпо. Жалко."
+  ];
+  var RELIC_STATUS = [
+    "SILVERHAND: ТЫ МЕНЯ СЛЫШИШЬ?",
+    "ВХОДЯЩИЙ СИГНАЛ: РЕЛИКТ",
+    "SILVERHAND: WAKE UP",
+    "ЦЕЛОСТНОСТЬ РЕЛИКТА ПАДАЕТ",
+    "ПОСТОРОННИЙ В СИСТЕМЕ: SILVERHAND"
+  ];
+  var RELIC_TICKER = [
+    "ВХОДЯЩИЙ СИГНАЛ // SILVERHAND: этот город сгорит, и мне плевать",
+    "SILVERHAND: хватит читать про Найт-Сити — иди и живи в нём",
+    "ПЕРЕХВАТ: «Арасака забрала у меня всё. Заберёт и у тебя»",
+    "SILVERHAND: два процента, дружище. время на исходе",
+    "WAKE THE FUCK UP, SAMURAI. WE HAVE A CITY TO BURN",
+    "SILVERHAND: реликт — не баг, это я. привыкай"
+  ];
+
+  function johnnyPool() {
+    var s = relicStage();
+    if (s >= 3) return JOHNNY_BREAK;
+    if (s === 2) return JOHNNY_TAUNT;
+    return JOHNNY_WHISPER;
+  }
+
+  function ensureRelicLine() {
+    if (relicLineEl) return;
+    var meta = document.querySelector(".topbar-meta");
+    if (!meta) return;
+    relicLineEl = document.createElement("span");
+    relicLineEl.className = "meta-line relic-line";
+    relicLineEl.id = "relic-line";
+    relicLineEl.hidden = true;
+    meta.appendChild(relicLineEl);
+  }
+
+  function ensureVignette() {
+    if (relicVignette) return;
+    relicVignette = document.createElement("div");
+    relicVignette.className = "relic-vignette";
+    relicVignette.setAttribute("aria-hidden", "true");
+    document.body.appendChild(relicVignette);
+  }
+
+  function updateRelicVisuals() {
+    var stage = relicStage();
+    if (stage !== relicStageNow) {
+      relicStageNow = stage;
+      document.body.classList.toggle("relic-1", stage >= 1);
+      document.body.classList.toggle("relic-2", stage >= 2);
+      document.body.classList.toggle("relic-3", stage >= 3);
+    }
+    if (relicLineEl) {
+      if (stage === 0) {
+        relicLineEl.hidden = true;
+      } else {
+        relicLineEl.hidden = false;
+        var integ = Math.max(0, Math.round(100 - relicInstability()));
+        var filled = Math.round(integ / 20);
+        var bar = "";
+        for (var i = 0; i < 5; i++) bar += i < filled ? "▓" : "░";
+        relicLineEl.textContent = "РЕЛИКТ " + bar + " " + integ + "%";
+        relicLineEl.classList.toggle("is-warn", integ <= 60 && integ > 35);
+        relicLineEl.classList.toggle("is-crit", integ <= 35);
+      }
+    }
+  }
+
+  function showJohnny(text, angry) {
+    ensureRelicLine();
+    var box = document.getElementById("relic-msg");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "relic-msg";
+      box.id = "relic-msg";
+      box.setAttribute("aria-live", "polite");
+      box.innerHTML = '<div class="relic-msg-tag">// ВХОДЯЩИЙ СИГНАЛ :: SILVERHAND</div><div class="relic-msg-text"></div>';
+      document.body.appendChild(box);
+    }
+    box.classList.toggle("is-angry", !!angry);
+    var textEl = box.querySelector(".relic-msg-text");
+    textEl.textContent = text;
+    box.classList.remove("is-show");
+    void box.offsetWidth;
+    box.classList.add("is-show");
+    if (!REDUCED_MOTION) {
+      textEl.dataset.text = text;
+      decodeText(textEl, 420);
+    }
+    clearTimeout(box._hide);
+    box._hide = setTimeout(function () { box.classList.remove("is-show"); }, angry ? 6500 : 5500);
+  }
+
+  function relicTickerTakeover() {
+    var ticker = document.querySelector(".ticker");
+    if (!ticker || ticker.classList.contains("is-silverhand")) return;
+    var label = ticker.querySelector(".ticker-label");
+    var track = ticker.querySelector(".ticker-track");
+    if (!label || !track) return;
+
+    var origLabel = label.textContent;
+    var origTrack = track.innerHTML;
+    var items = RELIC_TICKER
+      .map(function (t) { return '<span class="ticker-item">' + esc(t) + "</span>"; })
+      .join('<span class="ticker-sep">///</span>');
+    var group = '<div class="ticker-group">' + items + '<span class="ticker-sep">///</span></div>';
+
+    ticker.classList.add("is-silverhand");
+    label.textContent = "// SILVERHAND";
+    track.innerHTML = group + '<div aria-hidden="true" class="ticker-clone">' + group + "</div>";
+
+    setTimeout(function () {
+      if (!ticker.isConnected) return;
+      ticker.classList.remove("is-silverhand");
+      label.textContent = origLabel;
+      track.innerHTML = origTrack;
+    }, 13000);
+  }
+
+  function relicMessageLoop() {
+    var stage = relicStage();
+    var delay;
+    if (stage <= 0) delay = 12000;
+    else if (stage === 1) delay = 26000 + Math.random() * 14000;
+    else if (stage === 2) delay = 16000 + Math.random() * 10000;
+    else delay = 8000 + Math.random() * 7000;
+
+    relicMsgTimer = setTimeout(function () {
+      var s = relicStage();
+      if (s > 0) {
+        var pool = johnnyPool();
+        showJohnny(pool[(Math.random() * pool.length) | 0], s >= 3);
+        if (s >= 2 && Math.random() < 0.4) relicTickerTakeover();
+      }
+      relicMessageLoop();
+    }, delay);
+  }
+
+  function applyOmegaBlockers() {
+    relicOmegaUntil = Date.now() + 60000;      // тишина на минуту
+    relicElapsed = Math.max(0, relicElapsed - 90);
+    try { sessionStorage.setItem("nc-relic", String(relicElapsed)); } catch (e) {}
+    updateRelicVisuals();
+    // Джонни огрызается, несмотря на блокаторы
+    setTimeout(function () {
+      showJohnny(JOHNNY_OMEGA[(Math.random() * JOHNNY_OMEGA.length) | 0], true);
+    }, 1200);
+  }
+
+  function relicInit() {
+    ensureRelicLine();
+    ensureVignette();
+    updateRelicVisuals();
+    setInterval(function () {
+      if (Date.now() >= relicOmegaUntil) {
+        relicElapsed = Math.min(RELIC_CAP, relicElapsed + 1);
+        try { sessionStorage.setItem("nc-relic", String(relicElapsed)); } catch (e) {}
+      }
+      updateRelicVisuals();
+    }, 1000);
+    relicMessageLoop();
+  }
+
   /* ---------------- старт ---------------- */
 
   restoreSecrets();
@@ -2323,6 +2584,7 @@
   route();
   ambientGlitchLoop();
   statusTickerLoop();
+  relicInit();
   initCardTilt();
   bootSequence();
 
